@@ -1,38 +1,37 @@
-/* Username + password accounts, in an ACCOUNT drop-down at the top left of every page.
-   - Create an account or log in from the drop-down.
-   - The calculator, payouts and hangar pages need you to be logged in.
-   Passwords are never stored. Each one is run through PBKDF2 (a one-way scramble)
-   with a random salt, and only the result is saved in this browser. */
+/* Accounts, in an ACCOUNT drop-down at the top left of every page.
+   - Bot mode (config.js verifyApi is set): create an account with /register in Discord and
+     sign in with a one-time code from /login. No passwords.
+   - Browser mode (verifyApi empty): username + password accounts saved in this browser. Passwords
+     are never stored; only a one-way PBKDF2 scramble with a random salt is kept.
+   The calculator, payouts and hangar pages need you to be signed in. */
 (function () {
   'use strict';
+  var CFG = window.VANGUARD_CONFIG || {};
+  var VERIFY_API = String(CFG.verifyApi || '').replace(/\/+$/, '');
+  var DISCORD_CLIENT_ID = String(CFG.discordClientId || '');
+  var BOT = !!VERIFY_API;
+
   var USERS_KEY = 'vanguardUsers', SESSION_KEY = 'vanguardSession', TRY_KEY = 'vanguardLoginTries';
   var ITER = 200000, MAX_TRIES = 5, LOCK_MS = 60000;
   var NAME_RE = /^[A-Za-z0-9_-]{3,20}$/;
-  // DISCORD SIGN-IN: paste your Discord application's Client ID between the quotes (never the Client Secret).
-  // Until this is filled in, the Discord button shows a "not set up yet" message.
-  var DISCORD_CLIENT_ID = '';
-  // MEMBER VERIFICATION: paste your verification service address (the Cloudflare Worker from the discord-bot folder,
-  // like https://vanguard-verify.yourname.workers.dev, no trailing slash). When set, creating an account needs a
-  // one-time code from /verify in your Discord server, and the "Continue with Discord" button is hidden.
-  var VERIFY_API = '';
   var GATED = document.body.getAttribute('data-auth') === 'gate';
 
   function get(store, key, fb) { try { var v = JSON.parse(store.getItem(key)); return v == null ? fb : v; } catch (e) { return fb; } }
   function put(store, key, v) { try { store.setItem(key, JSON.stringify(v)); return true; } catch (e) { return false; } }
   function users() { var u = get(localStorage, USERS_KEY, {}); return u && typeof u === 'object' ? u : {}; }
+  function readSession() { return get(sessionStorage, SESSION_KEY, null) || get(localStorage, SESSION_KEY, null); }
+  function clearSession() { try { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(SESSION_KEY); } catch (e) {} }
 
   function currentUser() {
-    var n = get(sessionStorage, SESSION_KEY, null) || get(localStorage, SESSION_KEY, null);
+    var s = readSession();
+    if (BOT) return s && typeof s === 'object' && s.token && s.exp * 1000 > Date.now() && NAME_RE.test(String(s.name)) ? String(s.name) : null;
     var u = users();
-    return n && u[String(n).toLowerCase()] ? u[String(n).toLowerCase()].name : null;
+    return s && typeof s === 'string' && u[s.toLowerCase()] ? u[s.toLowerCase()].name : null;
   }
-  function setSession(name, remember) {
-    try { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(SESSION_KEY); } catch (e) {}
-    put(remember ? localStorage : sessionStorage, SESSION_KEY, name);
-  }
-  function logout() { try { sessionStorage.removeItem(SESSION_KEY); localStorage.removeItem(SESSION_KEY); } catch (e) {} location.reload(); }
+  function setSession(value, remember) { clearSession(); put(remember ? localStorage : sessionStorage, SESSION_KEY, value); }
+  function logout() { clearSession(); location.reload(); }
 
-  // ---------- hashing ----------
+  // ---------- hashing (browser mode) ----------
   function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
   function unhex(s) { var a = new Uint8Array(s.length / 2); for (var i = 0; i < a.length; i++) a[i] = parseInt(s.substr(i * 2, 2), 16); return a; }
   function newSalt() { var a = new Uint8Array(16); crypto.getRandomValues(a); return hex(a); }
@@ -52,9 +51,9 @@
   }
   function cleared(key) { var all = get(localStorage, TRY_KEY, {}); delete all[key]; put(localStorage, TRY_KEY, all); }
 
-  // ---------- Discord sign-in (implicit grant, identify scope only) ----------
+  // ---------- Discord login button (browser mode only) ----------
   function startDiscord(remember, msgEl) {
-    if (!DISCORD_CLIENT_ID) { msgEl.textContent = 'Discord sign-in is not set up yet. The site owner needs to add a Discord Client ID in auth.js.'; return; }
+    if (!DISCORD_CLIENT_ID) { msgEl.textContent = 'Discord sign-in is not set up yet. The site owner needs to add a Discord Client ID in config.js.'; return; }
     var file = location.pathname.split('/').pop() || 'index.html';
     if (!/^[A-Za-z0-9_-]+\.html$/.test(file)) file = 'index.html';
     var a = new Uint8Array(16);
@@ -70,18 +69,53 @@
       '&client_id=' + encodeURIComponent(DISCORD_CLIENT_ID) + '&state=' + state + '&redirect_uri=' + encodeURIComponent(redirect);
   }
 
-  // ---------- the log in / create account form ----------
+  // ---------- bot mode form: paste the code from Discord ----------
+  function mountBotForm(host, onSuccess) {
+    host.innerHTML =
+      '<h3>SIGN IN WITH DISCORD</h3>' +
+      '<ol style="margin:0 0 16px;padding-left:22px;color:var(--gray)">' +
+        '<li style="margin-bottom:8px"><strong style="color:var(--white)">New here?</strong> In our Discord server, type <strong style="color:var(--white)">/register</strong> and choose a username.</li>' +
+        '<li style="margin-bottom:8px"><strong style="color:var(--white)">Already registered?</strong> Type <strong style="color:var(--white)">/login</strong>.</li>' +
+        '<li>The bot replies with a code only you can see. Paste it below.</li>' +
+      '</ol>' +
+      '<form data-r="form" novalidate>' +
+        '<div class="fields" style="grid-template-columns:1fr"><div><label>Sign-in code<input type="text" data-r="code" autocomplete="off" maxlength="12" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" style="margin-top:4px"></label></div></div>' +
+        '<p style="margin:12px 0 0"><label style="display:inline-flex;align-items:center;gap:10px;margin:0"><input type="checkbox" data-r="remember" style="width:22px;min-height:22px"> Keep me signed in on this device</label></p>' +
+        '<div class="actions"><button type="submit" class="btn solid" data-r="btn">SIGN IN</button></div>' +
+      '</form>' +
+      '<p class="msg" data-r="msg" role="alert"></p>';
+    var q = function (n) { return host.querySelector('[data-r="' + n + '"]'); };
+    var busy = false;
+    q('form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (busy) return;
+      var code = q('code').value.trim();
+      if (!code) { q('msg').textContent = 'Paste the code from Discord.'; return; }
+      busy = true; q('btn').disabled = true; q('btn').textContent = 'WORKING...'; q('msg').textContent = '';
+      fetch(VERIFY_API + '/api/signin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: code }) })
+        .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Unexpected reply from the account service.' }; }); })
+        .then(function (res) {
+          if (!res || !res.ok) { q('msg').textContent = (res && res.error) || 'Sign-in failed. Try again.'; return; }
+          setSession({ name: res.username, token: res.token, exp: res.expires }, q('remember').checked);
+          onSuccess(res.username, false);
+        })
+        .catch(function () { q('msg').textContent = 'Could not reach the account service. Check your connection and try again.'; })
+        .then(function () { busy = false; var b = q('btn'); if (b) { b.disabled = false; b.textContent = 'SIGN IN'; } });
+    });
+    return q('code');
+  }
+
+  // ---------- browser mode form: username + password ----------
   function mountForm(host, onSuccess) {
     host.innerHTML =
       '<h3 data-r="title">LOG IN</h3>' +
-      '<div data-r="discordWrap" style="margin:0 0 16px"><button type="button" class="btn solid" data-r="discord" style="width:100%">CONTINUE WITH DISCORD</button><p class="help" style="margin:12px 0 0;font-size:0.95rem">or use a username and password</p></div>' +
+      (DISCORD_CLIENT_ID ? '<div style="margin:0 0 16px"><button type="button" class="btn solid" data-r="discord" style="width:100%">CONTINUE WITH DISCORD</button><p class="help" style="margin:12px 0 0;font-size:0.95rem">or use a username and password</p></div>' : '') +
       '<div class="actions" style="margin:0 0 16px"><button type="button" class="btn small" data-r="tabLogin">Log in</button><button type="button" class="btn small" data-r="tabRegister">Create account</button></div>' +
       '<form data-r="form" novalidate>' +
         '<div class="fields" style="grid-template-columns:1fr">' +
           '<div><label>Username<input type="text" data-r="user" autocomplete="username" maxlength="20" autocapitalize="off" spellcheck="false" style="margin-top:4px"></label></div>' +
           '<div><label>Password<input type="password" data-r="pass" autocomplete="current-password" maxlength="128" style="margin-top:4px"></label></div>' +
           '<div data-r="pass2Wrap" hidden><label>Confirm password<input type="password" data-r="pass2" autocomplete="new-password" maxlength="128" style="margin-top:4px"></label></div>' +
-          '<div data-r="codeWrap" hidden><label>Verification code<input type="text" data-r="code" autocomplete="off" maxlength="12" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" style="margin-top:4px"></label><p class="help" style="margin:6px 0 0;font-size:0.95rem">Run <strong>/verify</strong> in our Discord server and paste the code here.</p></div>' +
         '</div>' +
         '<p style="margin:12px 0 0"><label style="display:inline-flex;align-items:center;gap:10px;margin:0"><input type="checkbox" data-r="show" style="width:22px;min-height:22px"> Show password</label></p>' +
         '<p style="margin:8px 0 0"><label style="display:inline-flex;align-items:center;gap:10px;margin:0"><input type="checkbox" data-r="remember" style="width:22px;min-height:22px"> Keep me signed in on this device</label></p>' +
@@ -99,50 +133,31 @@
       q('title').textContent = reg ? 'CREATE ACCOUNT' : 'LOG IN';
       q('btn').textContent = label();
       q('pass2Wrap').hidden = !reg;
-      q('codeWrap').hidden = !(reg && VERIFY_API);
       q('pass').setAttribute('autocomplete', reg ? 'new-password' : 'current-password');
       q('tabLogin').setAttribute('aria-pressed', String(!reg));
       q('tabRegister').setAttribute('aria-pressed', String(reg));
     }
     q('tabLogin').addEventListener('click', function () { setMode('login'); q('user').focus(); });
     q('tabRegister').addEventListener('click', function () { setMode('register'); q('user').focus(); });
-    if (VERIFY_API) q('discordWrap').hidden = true;
-    q('discord').addEventListener('click', function () { startDiscord(q('remember').checked, q('msg')); });
+    if (DISCORD_CLIENT_ID) q('discord').addEventListener('click', function () { startDiscord(q('remember').checked, q('msg')); });
     q('show').addEventListener('change', function () { var t = this.checked ? 'text' : 'password'; q('pass').type = t; q('pass2').type = t; });
     setMode(Object.keys(users()).length ? 'login' : 'register');
 
     function work(on) { busy = on; q('btn').disabled = on; q('btn').textContent = on ? 'WORKING...' : label(); }
 
-    function register(user, pw, pw2, remember, code) {
+    function register(user, pw, pw2, remember) {
       if (!NAME_RE.test(user)) return say('Username must be 3 to 20 letters, numbers, underscores or hyphens.');
       if (pw.length < 8) return say('Use a password with at least 8 characters.');
       if (pw !== pw2) return say('The two passwords do not match.');
       var all = users(), key = user.toLowerCase();
       if (all[key]) return say('That username is already taken on this device. Try logging in.');
-      function store(verified) {
-        var salt = newSalt();
-        return derive(pw, salt, ITER).then(function (h) {
-          var rec = { name: user, salt: salt, hash: h, iter: ITER, created: Date.now() };
-          if (verified) rec.verified = { discordId: verified.discordId, discordName: verified.discordName };
-          all[key] = rec;
-          if (!put(localStorage, USERS_KEY, all)) { work(false); return say('This browser blocked saving. Allow site storage and try again.'); }
-          setSession(user, remember); onSuccess(user, true);
-        });
-      }
-      if (!VERIFY_API) {
-        work(true);
-        return store(null).catch(function () { work(false); say('Could not create the account in this browser.'); });
-      }
-      var c = (code || '').trim();
-      if (!c) return say('Enter the verification code from /verify in our Discord server.');
       work(true);
-      fetch(VERIFY_API + '/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: c, username: user }) })
-        .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Unexpected reply from the verification service.' }; }); })
-        .then(function (res) {
-          if (!res || !res.ok) { work(false); say((res && res.error) || 'Verification failed. Try again.'); return; }
-          return store(res).catch(function () { work(false); say('Could not create the account in this browser.'); });
-        })
-        .catch(function () { work(false); say('Could not reach the verification service. Check your connection and try again.'); });
+      var salt = newSalt();
+      derive(pw, salt, ITER).then(function (h) {
+        all[key] = { name: user, salt: salt, hash: h, iter: ITER, created: Date.now() };
+        if (!put(localStorage, USERS_KEY, all)) { work(false); return say('This browser blocked saving. Allow site storage and try again.'); }
+        setSession(user, remember); onSuccess(user, true);
+      }).catch(function () { work(false); say('Could not create the account in this browser.'); });
     }
 
     function login(user, pw, remember) {
@@ -166,7 +181,7 @@
       if (!hasCrypto()) return say('This browser cannot secure passwords on this page. Open the site from its normal https web address.');
       var user = q('user').value.trim(), pw = q('pass').value, remember = q('remember').checked;
       if (!user || !pw) return say('Enter a username and a password.');
-      if (mode === 'register') register(user, pw, q('pass2').value, remember, q('code').value);
+      if (mode === 'register') register(user, pw, q('pass2').value, remember);
       else login(user, pw, remember);
     });
     return q('user');
@@ -212,7 +227,10 @@
     var b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.textContent = 'LOG OUT'; b.addEventListener('click', logout);
     act.appendChild(b); panel.appendChild(act);
   }
-  function renderForm() { mountForm(panel, function (name, isNew) { signedIn(name, isNew); }); }
+  function renderForm() {
+    var done = function (name, isNew) { signedIn(name, isNew); };
+    if (BOT) mountBotForm(panel, done); else mountForm(panel, done);
+  }
 
   function signedIn(name, isNew) {
     user = name;
@@ -223,9 +241,18 @@
     window.dispatchEvent(new CustomEvent('vanguard-auth', { detail: { username: name } }));
   }
 
+  // Bot mode: ask the service whether this session is still good (for example, the account was removed).
+  function validateSession() {
+    var s = readSession();
+    if (!BOT || !s || !s.token) return;
+    fetch(VERIFY_API + '/api/me', { headers: { Authorization: 'Bearer ' + s.token } })
+      .then(function (r) { if (r.status === 401) logout(); })
+      .catch(function () { /* offline: keep the session */ });
+  }
+
   setLabel();
   var name0 = currentUser();
-  if (name0) { user = name0; signedIn(name0, false); }
+  if (name0) { user = name0; signedIn(name0, false); validateSession(); }
   else {
     renderForm();
     if (GATED) {

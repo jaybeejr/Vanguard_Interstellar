@@ -120,7 +120,51 @@
   function td(tr, text, cls) { var c = document.createElement('td'); c.textContent = text; if (cls) c.className = cls; tr.appendChild(c); return c; }
   function persist() { if (!write(KEY, items)) say('#msg', 'This browser blocked saving. Export a backup so you do not lose data.'); }
 
+  var API = String((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.verifyApi) || '').replace(/\/+$/, '');
+  var srvAccounts = null, adminKey = '';
+
+  function srvFetch(path, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ Authorization: 'Bearer ' + adminKey }, opts.headers || {});
+    return fetch(API + path, opts).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Unexpected reply from the account service.' }; }); });
+  }
+  function loadServerAccounts(note) {
+    adminKey = $('#adminKey').value;
+    if (!adminKey) { say('#msg', 'Enter the admin key first.'); return; }
+    say('#msg', 'Loading accounts...');
+    srvFetch('/api/admin/accounts').then(function (res) {
+      if (!res.ok) { srvAccounts = null; say('#msg', res.error || 'Could not load accounts.'); renderAccounts(); return; }
+      srvAccounts = res.accounts || [];
+      say('#msg', res.truncated ? 'Showing the first 1,000 accounts.' : (typeof note === 'string' ? note : ''));
+      renderAccounts();
+    }).catch(function () { say('#msg', 'Could not reach the account service.'); });
+  }
+  function renderServerAccounts() {
+    var hs = read('vanguardHangars', {}); if (!hs || typeof hs !== 'object') hs = {};
+    var body = $('#accounts'); body.innerHTML = '';
+    $('#sAccts').textContent = srvAccounts ? srvAccounts.length : '-';
+    $('#accountsNote').textContent = 'These accounts are held by your Discord bot service. Hangars are saved on each player\u2019s own device.';
+    if (!srvAccounts) { $('#accountsEmpty').textContent = 'Enter your admin key and press Load accounts.'; return; }
+    srvAccounts.forEach(function (a) {
+      var tr = document.createElement('tr');
+      var ships = Array.isArray(hs[String(a.username).toLowerCase()]) ? hs[String(a.username).toLowerCase()] : null;
+      td(tr, a.username); td(tr, 'Discord bot'); td(tr, a.discordName || '');
+      td(tr, a.created ? new Date(a.created).toISOString().slice(0, 10) : '');
+      td(tr, ships && ships.length ? ships.map(function (s) { return s.ship; }).join(', ') : 'On player device');
+      var c = document.createElement('td'), b = document.createElement('button');
+      b.type = 'button'; b.className = 'btn small'; b.textContent = 'Remove';
+      b.addEventListener('click', function () {
+        if (!confirm('Remove the account ' + a.username + '? They will be signed out and the name becomes free.')) return;
+        srvFetch('/api/admin/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: a.username }) })
+          .then(function (res) { if (res.ok) loadServerAccounts('Removed ' + a.username + '.'); else say('#msg', res.error || 'Could not remove it.'); });
+      });
+      c.appendChild(b); tr.appendChild(c); body.appendChild(tr);
+    });
+    $('#accountsEmpty').textContent = srvAccounts.length ? '' : 'No accounts yet.';
+  }
+
   function renderAccounts() {
+    if (API) { renderServerAccounts(); return; }
     var us = read('vanguardUsers', {}), hs = read('vanguardHangars', {});
     if (!us || typeof us !== 'object') us = {};
     if (!hs || typeof hs !== 'object') hs = {};
@@ -135,6 +179,7 @@
       td(tr, u.verified ? 'Verified: ' + u.verified.discordName : (u.discord ? 'Discord login' : 'Not verified'));
       td(tr, u.created ? new Date(u.created).toISOString().slice(0, 10) : '');
       td(tr, ships.length ? ships.map(function (s) { return s.nick ? s.ship + ' (' + s.nick + ')' : s.ship; }).join(', ') : 'None yet');
+      td(tr, '');
       body.appendChild(tr);
     });
     $('#accountsEmpty').textContent = keys.length ? '' : 'No accounts have been created in this browser yet.';
@@ -237,5 +282,9 @@
     }).catch(function () { say('#pinMsg', NO_CRYPTO); });
   });
 
+  if (API) {
+    $('#srvTools').hidden = false;
+    $('#loadAccounts').addEventListener('click', function () { loadServerAccounts(); });
+  }
   showGate();
 })();

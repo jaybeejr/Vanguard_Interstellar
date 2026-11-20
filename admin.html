@@ -67,12 +67,17 @@
     <section>
       <div class="wrap">
         <h2>ACCOUNTS</h2>
+        <div id="srvTools" hidden style="max-width:520px;margin-bottom:20px">
+          <label for="adminKey">Admin key (the ADMIN_KEY you set on the account service)</label>
+          <input id="adminKey" type="password" autocomplete="off">
+          <div class="actions"><button type="button" class="btn small" id="loadAccounts">LOAD ACCOUNTS</button></div>
+        </div>
         <div class="tablewrap" style="max-width:900px"><table>
-          <thead><tr><th>Username</th><th>Sign-in</th><th>Discord member</th><th>Created</th><th>Ships in hangar</th></tr></thead>
+          <thead><tr><th>Username</th><th>Sign-in</th><th>Discord member</th><th>Created</th><th>Ships in hangar</th><th><span class="sr-only">Action</span></th></tr></thead>
           <tbody id="accounts"></tbody>
         </table></div>
         <p class="help" id="accountsEmpty" style="margin-top:12px"></p>
-        <p class="help">Only accounts created in this browser are listed. Passwords are never shown or stored.</p>
+        <p class="help" id="accountsNote">Only accounts created in this browser are listed. Passwords are never shown or stored.</p>
       </div>
     </section>
 
@@ -144,6 +149,7 @@
 </footer>
 
 <script src="xlsx.js"></script>
+<script src="config.js"></script>
 <script src="admin.js"></script>
 </body>
 </html>
