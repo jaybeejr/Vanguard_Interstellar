@@ -168,3 +168,6 @@
   .acct-panel { position: absolute; top: calc(100% + 12px); left: 0; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 110px); overflow: auto; z-index: 60; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7); }
   .acct-panel[hidden] { display: none; }
   .gate-notice { padding: 70px 0; }
+
+  /* Make the hidden attribute always win (the LOCK button was showing before unlock) */
+  [hidden] { display: none !important; }

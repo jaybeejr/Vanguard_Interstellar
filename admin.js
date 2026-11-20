@@ -10,7 +10,7 @@
   var items = [], idleTimer = null;
 
   // Who may open this page: the adminUsers list in config.js (not case sensitive).
-  var ADMINS = ((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.adminUsers) || []).map(function (n) { return String(n).toLowerCase(); });
+  var ADMINS = ((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.adminUsers) || ['JayBeeJR', 'Stormbryngr']).map(function (n) { return String(n).toLowerCase(); });
   function getCurrentUser() { return window.vanguardUser || null; }
   function isAdmin(user) { return !!user && ADMINS.indexOf(String(user).toLowerCase()) !== -1; }
   function read(key, fallback) {
