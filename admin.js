@@ -1,5 +1,6 @@
 (function () {
   'use strict';
+  var items = [], idleTimer = null;
   var KEY = 'vanguardPayouts', PIN_KEY = 'vanguardAdminPin', TRY_KEY = 'vanguardAdminTries';
   // Default PIN (stored only as a salted SHA-256 hash). Changing the PIN on the admin page overrides it in that browser only.
   var PRESET = { salt: 'a247379eaa42a1a4021b23d3', hash: '381cc15d14994d48bc592d6fa98956cb9d69c2ea9be4730872b3d5c34445bdd3' };
@@ -8,6 +9,18 @@
   var fmt = function (n) { return Math.round(n).toLocaleString('en-US'); };
   var items = [], idleTimer = null;
 
+  var ADMIN_USERS = [
+  'JayBeeJR',
+  'Stormbryngr',
+];
+
+function getCurrentUser() {
+  return window.vanguardUser || null;
+}
+
+function isAdmin(user) {
+  return ADMIN_USERS.indexOf(user) !== -1;
+}
   function read(key, fallback) {
     try { var v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; } catch (e) { return fallback; }
   }
@@ -104,12 +117,37 @@
   });
 
   function unlock() {
-    $('#pin').value = ''; $('#pin2').value = ''; say('#gateMsg', '');
-    $('#gate').hidden = true;
-    $('#adminContent').hidden = false;
+    var username = getCurrentUser();
+
+   if (!username) {
+    say('#gateMsg', 'You must be signed in first.');
+    return;
+    }
+
+   if (!isAdmin(username)) {
+    document.body.innerHTML =
+      '<main style="padding:60px 20px;text-align:center">' +
+      '<h1>ACCESS DENIED</h1>' +
+      '<p>Your account does not have permission to access this page.</p>' +
+      '</main>';
+    return;
+   }
+
+   $('#pin').value = '';
+    $('#pin2').value = '';
+    say('#gateMsg', '');
+
+   $('#gate').hidden = true;
+   $('#adminContent').hidden = false;
     $('#lockBtn').hidden = false;
-    document.querySelector('.page-hero p').textContent = 'Payout overview and controls for leadership.';
-    items = load(); sweep(); render(); resetIdle();
+
+   document.querySelector('.page-hero p').textContent =
+    'Payout overview and controls for leadership.';
+
+   items = load();
+    sweep();
+   render();
+   resetIdle();
   }
   function lock() { location.reload(); }
   function resetIdle() { clearTimeout(idleTimer); idleTimer = setTimeout(lock, IDLE_MS); }
