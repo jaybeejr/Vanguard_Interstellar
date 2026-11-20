@@ -6,9 +6,12 @@
               with a code from /login. There are no passwords.
               When it is empty, the site uses simple username + password accounts saved in each browser.
 
+   adminUsers: the usernames allowed into admin.html. Add or remove names here (not case sensitive).
+
    discordClientId: only used when verifyApi is empty. Lets people sign in with a Discord login button.
               Paste the Client ID (never the Client Secret). */
 window.VANGUARD_CONFIG = {
   verifyApi: 'https://vanguard-verify.jakeylongnose.workers.dev/',
+  adminUsers: ['JayBeeJR', 'Stormbryngr'],
   discordClientId: ''
 };

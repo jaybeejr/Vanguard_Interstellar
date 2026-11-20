@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Teko:wght@500;700&display=swap">
 <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="needs-auth" data-auth="gate">
 
 <header class="topbar">
   <div class="wrap">
@@ -35,7 +35,16 @@
     </div>
   </div>
 
-  <section id="gate">
+  <section id="denied" hidden>
+    <div class="wrap">
+      <div class="panel" style="max-width:520px">
+        <h3>ACCESS DENIED</h3>
+        <p style="margin:0;color:var(--gray)">Your account does not have permission to open this page.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="gate" hidden>
     <div class="wrap">
       <div class="panel" style="max-width:520px">
         <h3 id="gateTitle">ENTER PIN</h3>
@@ -150,6 +159,7 @@
 
 <script src="xlsx.js"></script>
 <script src="config.js"></script>
+<script src="auth.js"></script>
 <script src="admin.js"></script>
 </body>
 </html>

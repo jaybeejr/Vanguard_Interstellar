@@ -9,18 +9,10 @@
   var fmt = function (n) { return Math.round(n).toLocaleString('en-US'); };
   var items = [], idleTimer = null;
 
-  var ADMIN_USERS = [
-  'JayBeeJR',
-  'Stormbryngr',
-];
-
-function getCurrentUser() {
-  return window.vanguardUser || null;
-}
-
-function isAdmin(user) {
-  return ADMIN_USERS.indexOf(user) !== -1;
-}
+  // Who may open this page: the adminUsers list in config.js (not case sensitive).
+  var ADMINS = ((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.adminUsers) || []).map(function (n) { return String(n).toLowerCase(); });
+  function getCurrentUser() { return window.vanguardUser || null; }
+  function isAdmin(user) { return !!user && ADMINS.indexOf(String(user).toLowerCase()) !== -1; }
   function read(key, fallback) {
     try { var v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; } catch (e) { return fallback; }
   }
@@ -117,21 +109,7 @@ function isAdmin(user) {
   });
 
   function unlock() {
-    var username = getCurrentUser();
-
-   if (!username) {
-    say('#gateMsg', 'You must be signed in first.');
-    return;
-    }
-
-   if (!isAdmin(username)) {
-    document.body.innerHTML =
-      '<main style="padding:60px 20px;text-align:center">' +
-      '<h1>ACCESS DENIED</h1>' +
-      '<p>Your account does not have permission to access this page.</p>' +
-      '</main>';
-    return;
-   }
+    if (!isAdmin(getCurrentUser())) { checkAccess(); return; }
 
    $('#pin').value = '';
     $('#pin2').value = '';
@@ -149,6 +127,17 @@ function isAdmin(user) {
    render();
    resetIdle();
   }
+  // Only listed admins ever see the PIN box; everyone else sees "access denied".
+  function checkAccess() {
+    var u = getCurrentUser();
+    if (!u) return;
+    var ok = isAdmin(u);
+    $('#adminContent').hidden = true;
+    $('#gate').hidden = !ok;
+    $('#denied').hidden = ok;
+  }
+  window.addEventListener('vanguard-auth', checkAccess);
+  checkAccess();
   function lock() { location.reload(); }
   function resetIdle() { clearTimeout(idleTimer); idleTimer = setTimeout(lock, IDLE_MS); }
   ['click', 'keydown'].forEach(function (ev) { document.addEventListener(ev, function () { if (!$('#adminContent').hidden) resetIdle(); }); });
