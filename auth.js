@@ -258,7 +258,7 @@
     if (GATED) {
       notice = document.createElement('section'); notice.className = 'gate-notice';
       notice.innerHTML = '<div class="wrap"><div class="panel" style="max-width:640px"><h3>LOG IN REQUIRED</h3><p style="margin:0 0 16px;color:var(--gray)">Log in or create an account to use this page. Open the ACCOUNT menu at the top left.</p><button type="button" class="btn solid" id="openAcct">OPEN ACCOUNT MENU</button></div></div>';
-      var main = document.querySelector('main');
+      var main = document.querySelector(document.body.getAttribute('data-gate') === 'calculator' ? '#calculator' : 'main');
       main.parentNode.insertBefore(notice, main);
       notice.querySelector('#openAcct').addEventListener('click', function () { setOpen(true); });
     }

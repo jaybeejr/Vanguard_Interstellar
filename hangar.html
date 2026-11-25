@@ -50,7 +50,7 @@
           <div class="fields">
             <div><label for="ship">Ship</label><input id="ship" type="text" list="shipList" maxlength="60" required placeholder="e.g. MOLE"></div>
             <div><label for="nick">Ship name (optional)</label><input id="nick" type="text" maxlength="40"></div>
-            <div><label for="div">Division (optional)</label>
+            <div><label for="div">Division (shows on that page)</label>
               <select id="div"><option value="">None</option><option>Navy</option><option>Army</option><option>Logistics</option></select></div>
             <div><label for="notes">Notes (optional)</label><input id="notes" type="text" maxlength="200" placeholder="e.g. insured, open for ops"></div>
           </div>
@@ -70,7 +70,7 @@
         <tbody id="ships"></tbody>
       </table></div>
       <p class="help" id="empty" style="margin-top:12px"></p>
-      <p class="help" style="max-width:760px">Your hangar is saved on this device with your account. Leadership can see which ships are on each account.</p>
+      <p class="help" id="hangarNote" style="max-width:760px"></p>
     </div>
   </section>
 </main>

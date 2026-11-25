@@ -157,6 +157,9 @@
 
   /* ---------- Sign-in ---------- */
   body.needs-auth main { display: none; }
+  /* On the Logistics page only the calculator needs a login; the rest of the page stays public. */
+  body.needs-auth[data-gate] main { display: block; }
+  body.needs-auth[data-gate="calculator"] #calculator { display: none; }
   .auth-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(10, 10, 10, 0.97); display: flex; align-items: center; justify-content: center; padding: 24px; overflow: auto; }
   .auth-panel { width: 100%; max-width: 460px; }
   .btn.small[aria-pressed="true"] { background: var(--red); }
