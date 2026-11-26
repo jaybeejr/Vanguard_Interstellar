@@ -4,6 +4,33 @@
   var $ = function (s) { return document.querySelector(s); };
   var fmt = function (n) { return Math.round(n).toLocaleString('en-US'); };
   var items = load();
+
+  // ---- Discord payout notices (needs the bot service in config.js) ----
+  var API = String((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.verifyApi) || '').replace(/\/+$/, '');
+  function sessionToken() {
+    try {
+      var s = JSON.parse(sessionStorage.getItem('vanguardSession') || localStorage.getItem('vanguardSession') || 'null');
+      return s && typeof s === 'object' && s.token ? s.token : '';
+    } catch (e) { return ''; }
+  }
+  // Posts "@you owes @player X aUEC for "op"" in the payout channel. Resolves to a short note to show, or ''.
+  function notifyDiscord(op, people) {
+    var token = sessionToken();
+    if (!API || !token || !people.length) return Promise.resolve('');
+    return fetch(API + '/api/payout-notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ op: op, payouts: people })
+    }).then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (res) {
+        if (res.ok && res.notified) return 'Posted in the Discord payout channel.';
+        if (res.ok && res.reason === 'discord-error') return 'Could not post to Discord.';
+        if (!res.ok && res.error) return res.error;
+        return '';
+      })
+      .catch(function () { return 'Could not reach the Discord notifier.'; });
+  }
+
   // Entries flagged as the commander's are kept in storage (for the admin page) but never shown here.
   function pub() { return items.filter(function (x) { return !x.commander; }); }
 
@@ -138,6 +165,7 @@
     if (!payer) { say('Enter your own username so players know who to go to for payment.'); $('#payer').focus(); return; }
     if (!player || !isFinite(amount) || amount <= 0) { say('Enter a username and an amount above 0.'); return; }
     try { localStorage.setItem('vanguardPayer', payer); } catch (err) {}
+    var wasPaid = $('#paidNow').checked, opText = $('#op').value.trim();
     items.push({
       id: uid(), date: $('#date').value || new Date().toISOString().slice(0, 10),
       player: player, payer: payer, vehicle: $('#vehicleSel').value, op: $('#op').value.trim(), division: $('#division').value,
@@ -146,6 +174,7 @@
     save(); render();
     $('#player').value = ''; $('#amount').value = ''; $('#op').value = ''; $('#paidNow').checked = false;
     say('Added payout for ' + player + '.');
+    if (!wasPaid) notifyDiscord(opText, [{ player: player, amount: Math.round(amount) }]).then(function (t) { if (t) say('Added payout for ' + player + '. ' + t); });
     $('#player').focus();
   });
 

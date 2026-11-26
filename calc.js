@@ -22,6 +22,33 @@
   var num = function (v) { var n = parseFloat(v); return isFinite(n) && n > 0 ? n : 0; };
   var last = { crew: [] };
 
+  // ---- Discord payout notices (needs the bot service in config.js) ----
+  var API = String((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.verifyApi) || '').replace(/\/+$/, '');
+  function sessionToken() {
+    try {
+      var s = JSON.parse(sessionStorage.getItem('vanguardSession') || localStorage.getItem('vanguardSession') || 'null');
+      return s && typeof s === 'object' && s.token ? s.token : '';
+    } catch (e) { return ''; }
+  }
+  // Posts "@you owes @player X aUEC for "op"" in the payout channel. Resolves to a short note to show, or ''.
+  function notifyDiscord(op, people) {
+    var token = sessionToken();
+    if (!API || !token || !people.length) return Promise.resolve('');
+    return fetch(API + '/api/payout-notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ op: op, payouts: people })
+    }).then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (res) {
+        if (res.ok && res.notified) return 'Posted in the Discord payout channel.';
+        if (res.ok && res.reason === 'discord-error') return 'Could not post to Discord.';
+        if (!res.ok && res.error) return res.error;
+        return '';
+      })
+      .catch(function () { return 'Could not reach the Discord notifier.'; });
+  }
+
+
   var RM = '<td data-label=""><button type="button" class="btn small rm" data-rm tabindex="-1" aria-label="Remove row" title="Remove row">&times;</button></td>';
   function addMaterial(tbodyId, listId) {
     var mining = tbodyId === 'miningRows';
@@ -161,6 +188,9 @@
       });
       localStorage.setItem(KEY, JSON.stringify(list));
       msg.textContent = 'Saved ' + rows.length + ' payouts as owed. Open the payouts page to mark them paid.';
+      // The commander's own share is never announced.
+      notifyDiscord(op, rows.filter(function (c) { return !c.cmd; }).map(function (c) { return { player: c.name, amount: Math.round(c.amount) }; }))
+        .then(function (t) { if (t) msg.textContent += ' ' + t; });
     } catch (e) {
       msg.textContent = 'This browser blocked saving. Check that site storage is allowed, then try again.';
     }
