@@ -8,6 +8,8 @@
   var $ = function (s) { return document.querySelector(s); };
   var fmt = function (n) { return Math.round(n).toLocaleString('en-US'); };
   var items = [], idleTimer = null;
+  // The commander's own share is kept in storage but never shown or exported here.
+  function shown() { return items.filter(function (x) { return !x.commander; }); }
 
   // Who may open this page: the adminUsers list in config.js (not case sensitive).
   var ADMINS = ((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.adminUsers) || ['JayBeeJR', 'Stormbryngr']).map(function (n) { return String(n).toLowerCase(); });
@@ -215,7 +217,7 @@
   function render() {
     renderAccounts();
     var owed = 0, paid = 0, players = {}, payers = {}, divs = {};
-    items.forEach(function (x) {
+    shown().forEach(function (x) {
       var p = players[x.player] = players[x.player] || { owed: 0, paid: 0 };
       var d = divs[x.division || 'Other'] = divs[x.division || 'Other'] || { owed: 0, paid: 0 };
       if (x.paid) { paid += x.amount; p.paid += x.amount; d.paid += x.amount; }
@@ -228,8 +230,8 @@
     });
     $('#sOwed').textContent = fmt(owed) + ' aUEC';
     $('#sPaid').textContent = fmt(paid) + ' aUEC';
-    $('#sCount').textContent = items.length;
-    $('#archInfo').textContent = 'Archived entries (paid more than 24 hours ago): ' + readArchive().length;
+    $('#sCount').textContent = shown().length;
+    $('#archInfo').textContent = 'Archived entries (paid more than 24 hours ago): ' + readArchive().filter(function (x) { return !x.commander; }).length;
 
     var bp = $('#byPlayer'); bp.innerHTML = '';
     var names = Object.keys(players).sort();
@@ -242,7 +244,7 @@
         b.type = 'button'; b.className = 'btn small'; b.textContent = 'Mark all paid';
         b.addEventListener('click', function () {
           if (!confirm('Mark everything owed to ' + n + ' as paid?')) return;
-          items.forEach(function (x) { if (x.player === n && !x.paid) { x.paid = true; x.paidAt = Date.now(); } });
+          items.forEach(function (x) { if (x.player === n && !x.paid && !x.commander) { x.paid = true; x.paidAt = Date.now(); } });
           persist(); render(); say('#msg', 'Marked all payouts for ' + n + ' as paid.');
         });
         a.appendChild(b);
@@ -261,23 +263,23 @@
     });
   }
 
-  var HEAD = ['Date', 'Username', 'Operation', 'Division', 'Amount (aUEC)', 'Status', 'Go to for payment', 'Marked paid', 'Commander', 'Vehicle', 'Role'];
+  var HEAD = ['Date', 'Username', 'Operation', 'Division', 'Amount (aUEC)', 'Status', 'Go to for payment', 'Marked paid', 'Vehicle', 'Role'];
   function stamp(t) { return t ? new Date(t).toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : ''; }
   function toRows(list, withArchived) {
     return list.map(function (x) {
-      var r = [x.date || '', x.player, x.op || '', x.division || '', x.amount, x.paid ? 'Paid' : 'Owed', x.payer || '', stamp(x.paidAt), x.commander ? 'Yes' : '', x.vehicle || '', x.role || ''];
+      var r = [x.date || '', x.player, x.op || '', x.division || '', x.amount, x.paid ? 'Paid' : 'Owed', x.payer || '', stamp(x.paidAt), x.vehicle || '', x.role || ''];
       if (withArchived) r.push(stamp(x.archivedAt));
       return r;
     });
   }
   $('#exportArchive').addEventListener('click', function () {
-    var arch = readArchive();
+    var arch = readArchive().filter(function (x) { return !x.commander; });
     if (!arch.length) { say('#msg', 'The archive is empty.'); return; }
     window.downloadXlsx('vanguard-payouts-archive.xlsx', 'Archive', HEAD.concat(['Archived']), toRows(arch, true));
   });
   $('#exportBackup').addEventListener('click', function () {
-    if (!items.length) { say('#msg', 'There are no payouts to export.'); return; }
-    window.downloadXlsx('vanguard-payouts-backup.xlsx', 'Payouts', HEAD, toRows(items, false));
+    if (!shown().length) { say('#msg', 'There are no payouts to export.'); return; }
+    window.downloadXlsx('vanguard-payouts-backup.xlsx', 'Payouts', HEAD, toRows(shown(), false));
   });
   $('#delPaid').addEventListener('click', function () {
     var n = items.filter(function (x) { return x.paid; }).length;
