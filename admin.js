@@ -124,10 +124,9 @@
    document.querySelector('.page-hero p').textContent =
     'Payout overview and controls for leadership.';
 
-   items = load();
-    sweep();
-   render();
-   resetIdle();
+   if (API) { items = []; } else { items = load(); sweep(); }
+    render();
+    resetIdle();
   }
   // Only listed admins ever see the PIN box; everyone else sees "access denied".
   function checkAccess() {
@@ -147,10 +146,10 @@
 
   // ---------- Admin view ----------
   function td(tr, text, cls) { var c = document.createElement('td'); c.textContent = text; if (cls) c.className = cls; tr.appendChild(c); return c; }
-  function persist() { if (!write(KEY, items)) say('#msg', 'This browser blocked saving. Export a backup so you do not lose data.'); }
+  function persist() { if (API) return; if (!write(KEY, items)) say('#msg', 'This browser blocked saving. Export a backup so you do not lose data.'); }
 
   var API = String((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.verifyApi) || '').replace(/\/+$/, '');
-  var srvAccounts = null, adminKey = '';
+  var srvAccounts = null, adminKey = '', serverArchived = 0;
 
   function srvFetch(path, opts) {
     opts = opts || {};
@@ -164,8 +163,15 @@
     srvFetch('/api/admin/accounts').then(function (res) {
       if (!res.ok) { srvAccounts = null; say('#msg', res.error || 'Could not load accounts.'); renderAccounts(); return; }
       srvAccounts = res.accounts || [];
+      loadServerPayouts();
       say('#msg', res.truncated ? 'Showing the first 1,000 accounts.' : (typeof note === 'string' ? note : ''));
       renderAccounts();
+    }).catch(function () { say('#msg', 'Could not reach the account service.'); });
+  }
+  function loadServerPayouts() {
+    srvFetch('/api/admin/payouts').then(function (res) {
+      if (!res.ok) { say('#msg', res.error || 'Could not load payouts.'); return; }
+      items = res.payouts || []; serverArchived = res.archived || 0; render();
     }).catch(function () { say('#msg', 'Could not reach the account service.'); });
   }
   function renderServerAccounts() {
@@ -231,7 +237,7 @@
     $('#sOwed').textContent = fmt(owed) + ' aUEC';
     $('#sPaid').textContent = fmt(paid) + ' aUEC';
     $('#sCount').textContent = shown().length;
-    $('#archInfo').textContent = 'Archived entries (paid more than 24 hours ago): ' + readArchive().filter(function (x) { return !x.commander; }).length;
+    $('#archInfo').textContent = 'Archived entries (paid more than 24 hours ago): ' + (API ? serverArchived : readArchive().filter(function (x) { return !x.commander; }).length);
 
     var bp = $('#byPlayer'); bp.innerHTML = '';
     var names = Object.keys(players).sort();
@@ -244,6 +250,11 @@
         b.type = 'button'; b.className = 'btn small'; b.textContent = 'Mark all paid';
         b.addEventListener('click', function () {
           if (!confirm('Mark everything owed to ' + n + ' as paid?')) return;
+          if (API) {
+            srvFetch('/api/admin/payouts/mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player: n }) })
+              .then(function (res) { if (res.ok) { loadServerPayouts(); say('#msg', 'Marked all payouts for ' + n + ' as paid.'); } else say('#msg', res.error || 'Could not do that.'); });
+            return;
+          }
           items.forEach(function (x) { if (x.player === n && !x.paid && !x.commander) { x.paid = true; x.paidAt = Date.now(); } });
           persist(); render(); say('#msg', 'Marked all payouts for ' + n + ' as paid.');
         });
@@ -251,7 +262,7 @@
       }
       tr.appendChild(a); bp.appendChild(tr);
     });
-    $('#byPlayerEmpty').textContent = names.length ? '' : 'No payouts saved in this browser yet.';
+    $('#byPlayerEmpty').textContent = names.length ? '' : (API ? 'No payouts yet. Enter your admin key and press Load accounts to load them.' : 'No payouts saved in this browser yet.');
 
     var py = $('#byPayer'); py.innerHTML = '';
     Object.keys(payers).sort().forEach(function (n) {
@@ -273,9 +284,16 @@
     });
   }
   $('#exportArchive').addEventListener('click', function () {
-    var arch = readArchive().filter(function (x) { return !x.commander; });
-    if (!arch.length) { say('#msg', 'The archive is empty.'); return; }
-    window.downloadXlsx('vanguard-payouts-archive.xlsx', 'Archive', HEAD.concat(['Archived']), toRows(arch, true));
+    function go(arch) {
+      if (!arch.length) { say('#msg', 'The archive is empty.'); return; }
+      window.downloadXlsx('vanguard-payouts-archive.xlsx', 'Archive', HEAD.concat(['Archived']), toRows(arch, true));
+    }
+    if (API) {
+      srvFetch('/api/admin/payouts/archive').then(function (res) { if (res.ok) go(res.archive || []); else say('#msg', res.error || 'Could not load the archive. Enter your admin key first.'); })
+        .catch(function () { say('#msg', 'Could not reach the account service.'); });
+      return;
+    }
+    go(readArchive().filter(function (x) { return !x.commander; }));
   });
   $('#exportBackup').addEventListener('click', function () {
     if (!shown().length) { say('#msg', 'There are no payouts to export.'); return; }
@@ -285,6 +303,11 @@
     var n = items.filter(function (x) { return x.paid; }).length;
     if (!n) { say('#msg', 'There are no paid entries to delete.'); return; }
     if (confirm('Archive and remove ' + n + ' paid entries from the log?')) {
+      if (API) {
+        srvFetch('/api/admin/payouts/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'paid' }) })
+          .then(function (res) { if (res.ok) { loadServerPayouts(); say('#msg', 'Archived and removed ' + res.removed + ' paid entries.'); } else say('#msg', res.error || 'Could not do that.'); });
+        return;
+      }
       var gone = items.filter(function (x) { return x.paid; });
       if (!archive(gone)) { say('#msg', 'Could not save the archive, so nothing was deleted.'); return; }
       items = items.filter(function (x) { return !x.paid; }); persist(); render(); say('#msg', 'Archived and removed ' + n + ' paid entries.');
@@ -292,7 +315,12 @@
   });
   $('#delAll').addEventListener('click', function () {
     if (!items.length) { say('#msg', 'There is nothing to delete.'); return; }
-    if (confirm('Delete ALL ' + items.length + ' payout entries from this browser? This cannot be undone.')) {
+    if (confirm('Delete ALL ' + items.length + ' payout entries' + (API ? ' for everyone' : ' from this browser') + '? This cannot be undone.')) {
+      if (API) {
+        srvFetch('/api/admin/payouts/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ scope: 'all' }) })
+          .then(function (res) { if (res.ok) { loadServerPayouts(); say('#msg', 'All payouts deleted.'); } else say('#msg', res.error || 'Could not do that.'); });
+        return;
+      }
       items = []; persist(); render(); say('#msg', 'All payouts deleted.');
     }
   });

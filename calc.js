@@ -22,32 +22,14 @@
   var num = function (v) { var n = parseFloat(v); return isFinite(n) && n > 0 ? n : 0; };
   var last = { crew: [] };
 
-  // ---- Discord payout notices (needs the bot service in config.js) ----
+  // ---- shared payouts (needs the bot service in config.js) ----
   var API = String((window.VANGUARD_CONFIG && window.VANGUARD_CONFIG.verifyApi) || '').replace(/\/+$/, '');
   function sessionToken() {
     try {
-      var s = JSON.parse(sessionStorage.getItem('vanguardSession') || localStorage.getItem('vanguardSession') || 'null');
-      return s && typeof s === 'object' && s.token ? s.token : '';
+      var t = JSON.parse(sessionStorage.getItem('vanguardSession') || localStorage.getItem('vanguardSession') || 'null');
+      return t && typeof t === 'object' && t.token ? t.token : '';
     } catch (e) { return ''; }
   }
-  // Posts "@you owes @player X aUEC for "op"" in the payout channel. Resolves to a short note to show, or ''.
-  function notifyDiscord(op, people) {
-    var token = sessionToken();
-    if (!API || !token || !people.length) return Promise.resolve('');
-    return fetch(API + '/api/payout-notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ op: op, payouts: people })
-    }).then(function (r) { return r.json().catch(function () { return {}; }); })
-      .then(function (res) {
-        if (res.ok && res.notified) return 'Posted in the Discord payout channel.';
-        if (res.ok && res.reason === 'discord-error') return 'Could not post to Discord.';
-        if (!res.ok && res.error) return res.error;
-        return '';
-      })
-      .catch(function () { return 'Could not reach the Discord notifier.'; });
-  }
-
 
   var RM = '<td data-label=""><button type="button" class="btn small rm" data-rm tabindex="-1" aria-label="Remove row" title="Remove row">&times;</button></td>';
   function addMaterial(tbodyId, listId) {
@@ -179,6 +161,25 @@
     try { localStorage.setItem('vanguardPayer', payer); } catch (e) {}
     var op = $('#opName').value.trim() || 'Mining and salvage run';
     var date = $('#opDate').value || new Date().toISOString().slice(0, 10);
+    // The commander's own share is never saved to the shared list or announced.
+    if (API) {
+      var people = rows.filter(function (c) { return !c.cmd; }).map(function (c) { return { player: c.name, amount: Math.round(c.amount), role: c.roles.join(', ') }; });
+      if (!people.length) { msg.textContent = 'Nothing to save yet. Add at least one other player to the crew.'; return; }
+      var btn = $('#savePayouts'); btn.disabled = true; msg.textContent = 'Saving...';
+      fetch(API + '/api/payouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sessionToken() },
+        body: JSON.stringify({ op: op, division: 'Logistics', vehicle: VEHICLE_NAMES[vehicle], date: date, items: people })
+      }).then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Unexpected reply from the account service.' }; }); })
+        .then(function (res) {
+          btn.disabled = false;
+          if (!res.ok) { msg.textContent = res.error || 'Could not save the payouts.'; return; }
+          msg.textContent = 'Saved ' + res.created.length + ' payouts as owed. Everyone can see them on the payouts page.' +
+            (res.notified ? ' Posted in the Discord payout channel.' : (res.notifyReason === 'discord-error' ? ' Could not post to Discord.' : ''));
+        })
+        .catch(function () { btn.disabled = false; msg.textContent = 'Could not reach the account service. Try again in a moment.'; });
+      return;
+    }
     try {
       var list = JSON.parse(localStorage.getItem(KEY) || '[]');
       if (!Array.isArray(list)) list = [];
@@ -191,9 +192,6 @@
       });
       localStorage.setItem(KEY, JSON.stringify(list));
       msg.textContent = 'Saved ' + rows.length + ' payouts as owed. Open the payouts page to mark them paid.';
-      // The commander's own share is never announced.
-      notifyDiscord(op, rows.filter(function (c) { return !c.cmd; }).map(function (c) { return { player: c.name, amount: Math.round(c.amount) }; }))
-        .then(function (t) { if (t) msg.textContent += ' ' + t; });
     } catch (e) {
       msg.textContent = 'This browser blocked saving. Check that site storage is allowed, then try again.';
     }

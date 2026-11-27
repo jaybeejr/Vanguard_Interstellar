@@ -44,7 +44,7 @@
 
   <section>
     <div class="wrap">
-      <p class="help" style="max-width:760px">Payouts are saved in this browser only, so other officers will not see them. 24 hours after a payout is marked paid, it is archived and removed from this list.</p>
+      <p class="help" id="payoutNote" style="max-width:760px"></p>
       <div class="stats">
         <div class="stat"><span>Still owed</span><strong id="sOwed">0 aUEC</strong></div>
         <div class="stat"><span>Paid out</span><strong id="sPaid">0 aUEC</strong></div>
@@ -88,6 +88,7 @@
   <section>
     <div class="wrap">
       <h2>PAYOUT LOG</h2>
+      <div class="actions" style="margin:0 0 16px"><button type="button" class="btn small" id="refreshBtn" hidden>REFRESH</button></div>
       <div class="filters">
         <div><label for="fStatus">Show</label>
           <select id="fStatus"><option value="all">All payouts</option><option value="owed">Still owed</option><option value="paid">Paid</option></select></div>
