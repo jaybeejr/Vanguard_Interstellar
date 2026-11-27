@@ -5,7 +5,7 @@
   var fmt = function (n) { return Math.round(n).toLocaleString('en-US'); };
   var fmtScu = function (n) { return n.toLocaleString('en-US', { maximumFractionDigits: 2 }); };
   var scuIn = 0, scuOut = 0;
-  var FUEL_PCT = 10; // fuel, repairs and other costs are always this % of total income
+  var FUEL_PCT = 5; // fuel, repairs and other costs are always this % of total income
   var COMMANDER_SHARES = 1; // the commander's share, set here by leadership (not shown or editable on the page)
   // Shares each seat earns. Leadership can change these (for example 0.5 for box jocks).
   var ROLE_SHARES = { laser: 1, salvage: 1, boxjock: 1 };
@@ -122,6 +122,8 @@
     $('#vehicleHint').hidden = !!v;
     $('#panelMining').hidden = v === 'reclaimer';
     $('#panelSalvage').hidden = v === 'mole';
+    // Refineries are only used for mining, so a salvage-only vehicle has no refinery fees.
+    $('#refineFee').closest('div').hidden = v === 'reclaimer';
     try { localStorage.setItem('vanguardVehicle', v); } catch (e) {}
   }
 
@@ -132,7 +134,8 @@
     var gross = mining + salvage;
     var otherCosts = gross * FUEL_PCT / 100;
     $('#otherCosts').value = fmt(otherCosts);
-    var expenses = num($('#refineFee').value) + otherCosts;
+    var refineFees = $('#panelMining').hidden ? 0 : num($('#refineFee').value);
+    var expenses = refineFees + otherCosts;
     var net = gross - expenses;
     var pct = Math.min(100, num($('#orgCut').value));
     var orgCut = Math.max(0, net) * pct / 100;
@@ -209,6 +212,8 @@
 
   var root = $('#calculator');
   if (!root) return;
+  var fuelLabel = document.querySelector('label[for="otherCosts"]');
+  if (fuelLabel) fuelLabel.textContent = 'Fuel, repairs, other (always ' + FUEL_PCT + '% of income, aUEC)';
   // Rows add themselves as you type, so there is no need to click Add.
   function autoGrow(t) {
     var tr = t.closest && t.closest('tr');
